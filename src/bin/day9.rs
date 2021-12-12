@@ -112,5 +112,5 @@ fn iter_adj_pos<T>((l, c): (usize, usize), map: &[Vec<T>]) -> impl Iterator<Item
 }
 
 fn maybe_once<T>(v: Option<T>) -> impl Iterator<Item = T> {
-    std::iter::once(v).filter_map(|v| v)
+    std::iter::once(v).flatten()
 }

@@ -1,6 +1,5 @@
 use bitflags::bitflags;
 use itertools::Itertools;
-use nom::error::context;
 use std::{
     io::{self, BufRead},
     ops::{BitAnd, Shr},
@@ -63,17 +62,7 @@ const SEGMENTS: [SegDisp; 7] = [
 type WiringPermutation = [SegDisp; 7];
 
 fn main() {
-    let mut input = parse_input(io::stdin().lock());
-    for (training_set, _) in &mut input {
-        // remove eights from training sets because they bring no information
-        //training_set.retain(|&s| s != SegDisp::EIGHT);
-
-        // put numbers that use less segments first to speed things up
-        //training_set.sort_unstable_by_key(|&s| bit_count(s));
-
-        // put more unique numbers first to speed things up
-        //training_set.sort_unstable_by_key(|&s| confusion_score(s));
-    }
+    let input = parse_input(io::stdin().lock());
 
     // part1
     dbg!(input
