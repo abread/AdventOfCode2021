@@ -32,15 +32,6 @@ fn main() {
     let (_, &max) = frequencies.iter().max_by_key(|(_, &count)| count).unwrap();
 
     dbg!("part1", max - min);
-
-    for _ in 10..40 {
-        polymer = step_polymer(polymer, &rules);
-    }
-    let frequencies = el_frequencies(&polymer);
-    let (_, &min) = frequencies.iter().min_by_key(|(_, &count)| count).unwrap();
-    let (_, &max) = frequencies.iter().max_by_key(|(_, &count)| count).unwrap();
-
-    dbg!("part2", max - min);
 }
 
 fn step_polymer(polymer: Vec<char>, rules: &HashMap<(char, char), char>) -> Vec<char> {
