@@ -31,7 +31,7 @@ fn main() {
     let (_, &min) = frequencies.iter().min_by_key(|(_, &count)| count).unwrap();
     let (_, &max) = frequencies.iter().max_by_key(|(_, &count)| count).unwrap();
 
-    dbg!("part1", max - min);
+    dbg!("part1", dbg!(max) - dbg!(min));
 }
 
 fn step_polymer(polymer: Vec<char>, rules: &HashMap<(char, char), char>) -> Vec<char> {

@@ -1,7 +1,6 @@
 use std::{
     collections::HashMap,
     io::{self, BufRead},
-    sync::mpsc::channel,
 };
 
 fn main() {
@@ -21,44 +20,55 @@ fn main() {
             ((c1, c2), after.chars().next().unwrap())
         })
         .collect::<HashMap<_, _>>();
-    let rules = Box::leak(Box::new(rules)); // make a static ref
 
-    let frequencies = polymer_freqs_after_steps(&initial, rules,40);
+    let frequencies = polymer_freqs_after_steps(&initial, &rules, 10);
+    let (_, &min) = frequencies.iter().min_by_key(|(_, &count)| count).unwrap();
+    let (_, &max) = frequencies.iter().max_by_key(|(_, &count)| count).unwrap();
+
+    dbg!("part1", max - min);
+
+    // we can just compute everything again, it's that cheap
+
+    let frequencies = polymer_freqs_after_steps(&initial, &rules, 40);
     let (_, &min) = frequencies.iter().min_by_key(|(_, &count)| count).unwrap();
     let (_, &max) = frequencies.iter().max_by_key(|(_, &count)| count).unwrap();
 
     dbg!("part2", max - min);
 }
 
-fn polymer_freqs_after_steps(polymer: &[char], rules: &'static HashMap<(char, char), char>, n: usize) -> HashMap<char, usize> {
-    fn recurse(start: char, end: char, rules: &HashMap<(char, char), char>, n: usize, counts: &mut HashMap<char, usize>) {
-        if n == 0 {
-            *counts.entry(start).or_default() += 1;
-        } else {
-            let middle = rules[&(start, end)];
-            recurse(start, middle, rules, n - 1, counts);
-            recurse(middle, end, rules, n - 1, counts);
-        }
-    }
+fn polymer_freqs_after_steps(
+    polymer: &[char],
+    rules: &HashMap<(char, char), char>,
+    n: usize,
+) -> HashMap<char, usize> {
+    let mut pair_counts = rules
+        .keys()
+        .copied()
+        .map(|(a, b)| ((a, b), 0_usize))
+        .collect::<HashMap<_, _>>();
 
-    let (tx, rx) = channel();
     for win in polymer.windows(2) {
         let start = win[0];
         let end = win[1];
-        let tx = tx.clone();
-        std::thread::spawn(move || {
-            let mut counts_local = HashMap::new();
-            recurse(start, end, rules, n, &mut counts_local);
-            tx.send(counts_local).unwrap();
-        });
+        *pair_counts.get_mut(&(start, end)).unwrap() += 1;
     }
-    std::mem::drop(tx); // make sure the channel is closed after the last thread completes
+
+    for _ in 0..n {
+        let mut next_pair_counts = pair_counts.clone();
+        for (&(start, end), &count) in &pair_counts {
+            *next_pair_counts.get_mut(&(start, end)).unwrap() -= count;
+
+            let middle = rules[&(start, end)];
+            *next_pair_counts.get_mut(&(start, middle)).unwrap() += count;
+            *next_pair_counts.get_mut(&(middle, end)).unwrap() += count;
+        }
+
+        pair_counts = next_pair_counts;
+    }
 
     let mut counts = HashMap::new();
-    for count in rx.into_iter() {
-        for (c, count) in count {
-            *counts.entry(c).or_default() += count;
-        }
+    for ((start, _end), count) in pair_counts {
+        *counts.entry(start).or_default() += count;
     }
 
     // add last letter too!
