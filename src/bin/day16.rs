@@ -9,9 +9,20 @@ enum Packet {
     },
     Operator {
         version: u8,
-        _type_id: u8,
+        typ: OperatorType,
         subpackets: Vec<Packet>,
     },
+}
+
+#[derive(Debug)]
+enum OperatorType {
+    Sum,
+    Product,
+    Minimum,
+    Maximum,
+    GreaterThan,
+    LessThan,
+    EqualTo,
 }
 
 /*
@@ -102,10 +113,21 @@ fn parse_operator_packet<S: BitStore>(
     };
     size += sub_size;
 
+    let typ = match type_id {
+        0 => OperatorType::Sum,
+        1 => OperatorType::Product,
+        2 => OperatorType::Minimum,
+        3 => OperatorType::Maximum,
+        5 => OperatorType::GreaterThan,
+        6 => OperatorType::LessThan,
+        7 => OperatorType::EqualTo,
+        _ => unreachable!("unknown operator type"),
+    };
+
     (
         Packet::Operator {
-            _type_id: type_id,
             version,
+            typ,
             subpackets,
         },
         size,
@@ -159,24 +181,59 @@ fn main() {
         //.inspect(|p| { dbg!(p); })
         .collect();
 
-    fn sum_packet_versions(packets: &[Packet]) -> u64 {
-        let mut sum = 0;
+    fn packet_version_sum(packet: &Packet) -> u64 {
+        match packet {
+            Packet::Literal { version, .. } => *version as u64,
+            Packet::Operator {
+                version,
+                subpackets,
+                ..
+            } => *version as u64 + subpackets.iter().map(packet_version_sum).sum::<u64>(),
+        }
+    }
+    dbg!(packet_version_sum(&packets[0]));
 
-        for p in packets {
-            match p {
-                Packet::Literal { version, .. } => sum += *version as u64,
-                Packet::Operator {
-                    version,
-                    subpackets,
-                    ..
-                } => {
-                    sum += *version as u64;
-                    sum += sum_packet_versions(subpackets);
+    fn compute_value(packet: &Packet) -> u64 {
+        match packet {
+            Packet::Literal { _parts, .. } => {
+                _parts.iter().fold(0_u64, |acc, &x| acc * 16 + x as u64)
+            }
+            Packet::Operator {
+                typ, subpackets, ..
+            } => {
+                use OperatorType::*;
+                match typ {
+                    Sum => subpackets.iter().map(compute_value).sum::<u64>(),
+                    Product => subpackets.iter().map(compute_value).product::<u64>(),
+                    Minimum => subpackets.iter().map(compute_value).min().unwrap(),
+                    Maximum => subpackets.iter().map(compute_value).max().unwrap(),
+                    GreaterThan if subpackets.len() == 2 => {
+                        if compute_value(&subpackets[0]) > compute_value(&subpackets[1]) {
+                            1
+                        } else {
+                            0
+                        }
+                    }
+                    LessThan if subpackets.len() == 2 => {
+                        if compute_value(&subpackets[0]) < compute_value(&subpackets[1]) {
+                            1
+                        } else {
+                            0
+                        }
+                    }
+                    EqualTo if subpackets.len() == 2 => {
+                        if compute_value(&subpackets[0]) == compute_value(&subpackets[1]) {
+                            1
+                        } else {
+                            0
+                        }
+                    }
+                    GreaterThan | LessThan | EqualTo => {
+                        unreachable!("invalid operand count for comparator")
+                    }
                 }
             }
         }
-
-        sum
     }
-    dbg!(sum_packet_versions(&packets));
+    dbg!(compute_value(&packets[0]));
 }
