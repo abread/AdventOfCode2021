@@ -14,17 +14,44 @@ enum SNum {
 }
 
 fn main() {
-    let sum = io::stdin()
+    let numbers: Vec<_> = io::stdin()
         .lock()
         .lines()
         .map(Result::unwrap)
         .filter(|s| !s.trim().is_empty())
         .map(|s| s.trim().parse::<SNum>().unwrap())
-        .reduce(|a, b| a.add(b))
-        .unwrap();
+        .collect();
 
-    println!("{}", &sum);
-    dbg!(sum.magnitude());
+    dbg!(
+        "part1",
+        numbers
+            .iter()
+            .cloned()
+            .reduce(|a, b| a.add(b))
+            .unwrap()
+            .magnitude()
+    );
+
+    let mut max_magnitude = 0;
+    for (i, n1) in numbers.iter().enumerate() {
+        for n2 in &numbers[i + 1..] {
+            {
+                let (n1, n2) = (n1.clone(), n2.clone());
+                let m = n1.add(n2).magnitude();
+                if m > max_magnitude {
+                    max_magnitude = m;
+                }
+            }
+            {
+                let (n1, n2) = (n1.clone(), n2.clone());
+                let m = n2.add(n1).magnitude();
+                if m > max_magnitude {
+                    max_magnitude = m;
+                }
+            }
+        }
+    }
+    dbg!(max_magnitude);
 }
 
 impl SNum {
@@ -35,9 +62,15 @@ impl SNum {
     }
 
     fn reduce(&mut self) {
-        while self.reduce_once().is_some() {
-            // reduce until you can't reduce anymore
-            println!(" {}", &self);
+        let mut changed = true;
+
+        while changed {
+            while self.reduce_once().is_some() {
+                // reduce until you can't reduce anymore
+                //println!(" {}", &self);
+            }
+
+            changed = self.try_split().is_some();
         }
     }
 
@@ -46,99 +79,71 @@ impl SNum {
 
         fn recurse(lvl1: [&mut SNum; 2], depth: usize) -> Option<([bool; 2], [i64; 2])> {
             let [left1, right1] = lvl1;
-            match left1 {
-                SNum::Pair(boxed_pair) => {
-                    let [ref mut left2, ref mut right2] = **boxed_pair;
+            if let SNum::Pair(boxed_pair) = left1 {
+                let [ref mut left2, ref mut right2] = **boxed_pair;
 
-                    if left2.literal_mut().is_some()
-                        && right2.literal_mut().is_some()
-                        && depth >= MAX_EXPLOSION_DEPTH_DIFF
-                    {
-                        // begin explosion
+                if left2.literal_mut().is_some()
+                    && right2.literal_mut().is_some()
+                    && depth >= MAX_EXPLOSION_DEPTH_DIFF
+                {
+                    // begin explosion
 
-                        let val_left = *left2.literal_mut().unwrap();
-                        let val_right = *right2.literal_mut().unwrap();
-                        *left1 = SNum::Lit(0);
+                    let val_left = *left2.literal_mut().unwrap();
+                    let val_right = *right2.literal_mut().unwrap();
+                    *left1 = SNum::Lit(0);
 
-                        let mut right_set = false;
+                    let mut right_set = false;
+                    if let Some(rval) = right1.first_lit_left() {
+                        *rval += val_right;
+                        right_set = true;
+                    }
+
+                    return Some(([false, right_set], [val_left, val_right]));
+                } else if let Some(([left_set, mut right_set], [val_left, val_right])) =
+                    recurse([left2, right2], depth + 1)
+                {
+                    if !right_set {
                         if let Some(rval) = right1.first_lit_left() {
                             *rval += val_right;
                             right_set = true;
                         }
-
-                        return Some(([false, right_set], [val_left, val_right]));
-                    } else if let Some(([left_set, mut right_set], [val_left, val_right])) =
-                        recurse([left2, right2], depth + 1)
-                    {
-                        if !right_set {
-                            if let Some(rval) = right1.first_lit_left() {
-                                *rval += val_right;
-                                right_set = true;
-                            }
-                        }
-
-                        return Some(([left_set, right_set], [val_left, val_right]));
                     }
-                }
-                SNum::Lit(n) => {
-                    let n = *n;
-                    if n >= 10 {
-                        let rounded_down = n / 2;
-                        let rounded_up = rounded_down + n % 2;
 
-                        let rounded_down = SNum::Lit(rounded_down);
-                        let rounded_up = SNum::Lit(rounded_up);
-                        *left1 = SNum::Pair(Box::new([rounded_down, rounded_up]));
-                        return Some(([true, true], [0, 0]));
-                    }
+                    return Some(([left_set, right_set], [val_left, val_right]));
                 }
             }
 
-            match right1 {
-                SNum::Pair(boxed_pair) => {
-                    let [ref mut left2, ref mut right2] = **boxed_pair;
+            if let SNum::Pair(boxed_pair) = right1 {
+                let [ref mut left2, ref mut right2] = **boxed_pair;
 
-                    if left2.literal_mut().is_some()
-                        && right2.literal_mut().is_some()
-                        && depth >= MAX_EXPLOSION_DEPTH_DIFF
-                    {
-                        // begin explosion
+                if left2.literal_mut().is_some()
+                    && right2.literal_mut().is_some()
+                    && depth >= MAX_EXPLOSION_DEPTH_DIFF
+                {
+                    // begin explosion
 
-                        let val_left = *left2.literal_mut().unwrap();
-                        let val_right = *right2.literal_mut().unwrap();
-                        *right1 = SNum::Lit(0);
+                    let val_left = *left2.literal_mut().unwrap();
+                    let val_right = *right2.literal_mut().unwrap();
+                    *right1 = SNum::Lit(0);
 
-                        let mut left_set = false;
+                    let mut left_set = false;
+                    if let Some(lval) = left1.first_lit_right() {
+                        *lval += val_left;
+                        left_set = true;
+                    }
+
+                    return Some(([left_set, false], [val_left, val_right]));
+                } else if let Some(([mut left_set, right_set], [val_left, val_right])) =
+                    recurse([left2, right2], depth + 1)
+                {
+                    if !left_set {
                         if let Some(lval) = left1.first_lit_right() {
                             *lval += val_left;
                             left_set = true;
                         }
-
-                        return Some(([left_set, false], [val_left, val_right]));
-                    } else if let Some(([mut left_set, right_set], [val_left, val_right])) =
-                        recurse([left2, right2], depth + 1)
-                    {
-                        if !left_set {
-                            if let Some(lval) = left1.first_lit_right() {
-                                *lval += val_left;
-                                left_set = true;
-                            }
-                        }
-
-                        return Some(([left_set, right_set], [val_left, val_right]));
                     }
-                }
-                SNum::Lit(n) => {
-                    let n = *n;
-                    if n >= 10 {
-                        let rounded_down = n / 2;
-                        let rounded_up = rounded_down + n % 2;
 
-                        let rounded_down = SNum::Lit(rounded_down);
-                        let rounded_up = SNum::Lit(rounded_up);
-                        *right1 = SNum::Pair(Box::new([rounded_down, rounded_up]));
-                        return Some(([true, true], [0, 0]));
-                    }
+                    return Some(([left_set, right_set], [val_left, val_right]));
                 }
             }
 
@@ -149,6 +154,16 @@ impl SNum {
             SNum::Pair(boxed_pair) => {
                 let [ref mut left, ref mut right] = **boxed_pair;
                 recurse([left, right], 1).map(|_| ())
+            }
+            _ => None,
+        }
+    }
+
+    fn try_split(&mut self) -> Option<()> {
+        match self {
+            SNum::Pair(boxed_pair) => {
+                let [ref mut left, ref mut right] = **boxed_pair;
+                left.try_split().or_else(|| right.try_split())
             }
             SNum::Lit(n) => {
                 let n = *n;
@@ -245,7 +260,7 @@ impl std::fmt::Debug for SNum {
             Self::Pair(boxed_pair) => {
                 let [ref left, ref right] = **boxed_pair;
                 f.debug_list().entry(left).entry(right).finish()
-            },
+            }
         }
     }
 }
@@ -257,7 +272,7 @@ impl std::fmt::Display for SNum {
             Self::Pair(boxed_pair) => {
                 let [ref left, ref right] = **boxed_pair;
                 f.debug_list().entry(left).entry(right).finish()
-            },
+            }
         }
     }
 }
