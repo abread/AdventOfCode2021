@@ -2,9 +2,7 @@ use std::io::{self, BufRead};
 use std::ops::RangeInclusive;
 use std::str::FromStr;
 
-use dashmap::DashSet;
 use itertools::Itertools;
-use rayon::prelude::*;
 
 #[derive(PartialEq, Eq, Clone, Hash, Debug)]
 struct Cuboid(
@@ -14,7 +12,7 @@ struct Cuboid(
 );
 
 #[derive(Default)]
-struct ReactorCore(DashSet<Cuboid>);
+struct ReactorCore(Vec<Cuboid>);
 
 fn main() {
     let mut core = ReactorCore::default();
@@ -190,37 +188,25 @@ impl ReactorCore {
 
         for c in self.0.iter() {
             new_bits = new_bits
-                .into_par_iter()
-                .flat_map_iter(|bit| match c.intersect(&bit) {
+                .into_iter()
+                .flat_map(|bit| match c.intersect(&bit) {
                     (_, Some(_), new_bits) => new_bits,
                     _ => Box::new(std::iter::once(bit)),
                 })
                 .collect();
         }
 
-        self.0.par_extend(new_bits.into_par_iter());
+        self.0.extend(new_bits.into_iter());
     }
 
     fn off(&mut self, to_remove: Cuboid) {
-        let (to_remove, to_add): (Vec<_>, Vec<_>) = self
-            .0
-            .par_iter()
-            .filter_map(|c| match c.intersect(&to_remove) {
-                (to_add, Some(intersection_to_remove), _already_off) => {
-                    Some(((c.clone(), intersection_to_remove), to_add))
-                }
-                _ => None,
+        self.0 = std::mem::take(&mut self.0)
+            .into_iter()
+            .flat_map(|c| match c.intersect(&to_remove) {
+                (to_keep, Some(_intersection), _already_off) => to_keep,
+                _ => Box::new(std::iter::once(c)),
             })
-            .unzip();
-
-        for (c, interesection) in to_remove {
-            self.0.remove(&c);
-            self.0.remove(&interesection);
-        }
-
-        for it in to_add {
-            self.0.extend(it);
-        }
+            .collect();
     }
 
     fn on_count(&self) -> u128 {
