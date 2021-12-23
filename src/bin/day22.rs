@@ -33,7 +33,7 @@ fn main() {
             -i64::MAX..=i64::MAX,
         );
 
-        println!("{:#?}", &instr);
+        //println!("{:#?}", &instr);
         match instr {
             Instr::On(c) => {
                 if let Some(c) = c.restrict(&region) {
@@ -50,9 +50,9 @@ fn main() {
         /*for p in core.sorted_on() {
             println!("{:?}", p);
         }*/
-        println!("cuboid count: {}", core.0.len());
-        dbg!(core.on_count());
-        println!();
+        //println!("cuboid count: {}", core.0.len());
+        //dbg!(core.on_count());
+        //println!();
     }
 
     dbg!(core.on_count());
@@ -186,83 +186,29 @@ impl Cuboid {
 
 impl ReactorCore {
     fn on(&mut self, new_c: Cuboid) {
-        let (removed, deduped_bits): (Vec<_>, Vec<_>) = self
-            .0
-            .par_iter()
-            .filter_map(|c| {
-                let c: &Cuboid = &*c;
-                match c.intersect(&new_c) {
-                    (c_bits, Some(intersection), new_bits) => {
-                        Some((c.clone(), (c_bits, intersection, new_bits)))
-                    }
-                    _ => None,
-                }
-            })
-            .unzip();
+        let mut new_bits = vec![new_c];
 
-        if removed.is_empty() {
-            // no conflicts, just add it
-            self.0.insert(new_c);
-            return;
+        for c in self.0.iter() {
+            new_bits = new_bits
+                .into_par_iter()
+                .flat_map_iter(|bit| match c.intersect(&bit) {
+                    (_, Some(_), new_bits) => new_bits,
+                    _ => Box::new(std::iter::once(bit)),
+                })
+                .collect();
         }
 
-        removed.into_par_iter().for_each(|c| {
-            self.0.remove(&c);
-        });
-
-        let semi_deduped_bits = deduped_bits
-            .into_par_iter()
-            .flat_map_iter(move |(c_bits, intersection, new_bits)| {
-                c_bits.chain(new_bits).chain(std::iter::once(intersection))
-            })
-            .collect();
-
-        fn dedup(mut set: DashSet<Cuboid>) -> DashSet<Cuboid> {
-            let (to_remove, more_deduped): (Vec<_>, Vec<_>) = set
-                .par_iter()
-                .flat_map(|a| {
-                    let a2 = a.clone();
-                    set.par_iter()
-                        .filter(move |b| **b > a2)
-                        .map(move |b| (a.clone(), b.clone()))
-                })
-                .filter_map(|(a, b)| match a.intersect(&b) {
-                    (a_bits, Some(intersection), b_bits) => {
-                        Some(((a, b), (a_bits, intersection, b_bits)))
-                    }
-                    _ => None,
-                })
-                .unzip();
-
-            // bah, had to allocate with unzip
-            let more_deduped = more_deduped.into_par_iter()
-                .flat_map_iter(|(a_bits, intersection, b_bits)| a_bits.chain(b_bits).chain(std::iter::once(intersection)))
-                .collect::<DashSet<Cuboid>>();
-
-            dbg!(to_remove.len());
-            if to_remove.is_empty() {
-                // was already deduped
-                set
-            } else {
-                for (a, b) in to_remove {
-                    set.remove(&a);
-                    set.remove(&b);
-                }
-
-                set.extend(dedup(more_deduped).into_iter());
-                set
-            }
-        }
-
-        let deduped_bits = dedup(semi_deduped_bits);
-        self.0.extend(deduped_bits.into_iter());
+        self.0.par_extend(new_bits.into_par_iter());
     }
 
     fn off(&mut self, to_remove: Cuboid) {
-        let (to_remove, to_add): (Vec<_>, Vec<_>) = self.0
+        let (to_remove, to_add): (Vec<_>, Vec<_>) = self
+            .0
             .par_iter()
             .filter_map(|c| match c.intersect(&to_remove) {
-                (to_add, Some(intersection_to_remove), _already_off) => Some(((c.clone(), intersection_to_remove), to_add)),
+                (to_add, Some(intersection_to_remove), _already_off) => {
+                    Some(((c.clone(), intersection_to_remove), to_add))
+                }
                 _ => None,
             })
             .unzip();
